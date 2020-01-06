@@ -14,7 +14,8 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  *
- *  2019-11-20: Fixed Association Group management.
+ *  2020-01-06: Fixed Association Group management
+ *				Added debug enable/disable based on https://github.com/InovelliUSA/Hubitat/pull/2/commits/5426c69ced85c54fc93bd7f0ffae7592de0b5533
  *
  *  2018-05-02: Added support for Z-Wave Association Tool SmartApp. Associations require firmware 1.02+.
  *              https://github.com/erocm123/SmartThingsPublic/tree/master/smartapps/erocm123/z-waveat
@@ -62,6 +63,7 @@ metadata {
         input "autoOff2", "number", title: "Auto Off Channel 2\n\nAutomatically turn switch off after this number of seconds\nRange: 0 to 32767", description: "Tap to set", required: false, range: "0..32767"
         input "ledIndicator", "enum", title: "LED Indicator\n\nTurn LED indicator on when switch is:\n", description: "Tap to set", required: false, options:[["0": "On"], ["1": "Off"], ["2": "Disable"]], defaultValue: "0"
         input description: "Use the \"Z-Wave Association Tool\" SmartApp to set device associations. (Firmware 1.02+)\n\nGroup 2: Sends on/off commands to associated devices when switch is pressed (BASIC_SET).", title: "Associations", displayDuringSetup: false, type: "paragraph", element: "paragraph"
+		input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: false
     }
     
     tiles {
@@ -92,9 +94,9 @@ def parse(String description) {
     def cmd = zwave.parse(description)
     if (cmd) {
         result += zwaveEvent(cmd)
-        log.debug "Parsed ${cmd} to ${result.inspect()}"
+        if (logEnable) log.debug "Parsed ${cmd} to ${result.inspect()}"
     } else {
-        log.debug "Non-parsed event: ${description}"
+        if (logEnable) log.debug "Non-parsed event: ${description}"
     }
     
     def now
@@ -108,7 +110,7 @@ def parse(String description) {
 }
 
 def zwaveEvent(hubitat.zwave.commands.basicv1.BasicReport cmd, ep = null) {
-    log.debug "BasicReport ${cmd} - ep ${ep}"
+    if (logEnable) log.debug "BasicReport ${cmd} - ep ${ep}"
     if (ep) {
         def event
         childDevices.each {
@@ -136,7 +138,7 @@ def zwaveEvent(hubitat.zwave.commands.basicv1.BasicReport cmd, ep = null) {
 }
 
 def zwaveEvent(hubitat.zwave.commands.switchbinaryv1.SwitchBinaryReport cmd, ep = null) {
-    log.debug "SwitchBinaryReport ${cmd} - ep ${ep}"
+    if (logEnable) log.debug "SwitchBinaryReport ${cmd} - ep ${ep}"
     if (ep) {
         def event
         def childDevice = childDevices.find {
@@ -168,7 +170,7 @@ def zwaveEvent(hubitat.zwave.commands.switchbinaryv1.SwitchBinaryReport cmd, ep 
 }
 
 def zwaveEvent(hubitat.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {
-    log.debug "MultiChannelCmdEncap ${cmd}"
+    if (logEnable) log.debug "MultiChannelCmdEncap ${cmd}"
     def encapsulatedCommand = cmd.encapsulatedCommand([0x32: 3, 0x25: 1, 0x20: 1])
     if (encapsulatedCommand) {
         zwaveEvent(encapsulatedCommand, cmd.sourceEndPoint as Integer)
@@ -176,20 +178,20 @@ def zwaveEvent(hubitat.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {
 }
 
 def zwaveEvent(hubitat.zwave.commands.manufacturerspecificv2.ManufacturerSpecificReport cmd) {
-    log.debug "ManufacturerSpecificReport ${cmd}"
+    if (logEnable) log.debug "ManufacturerSpecificReport ${cmd}"
     def msr = String.format("%04X-%04X-%04X", cmd.manufacturerId, cmd.productTypeId, cmd.productId)
-    log.debug "msr: $msr"
+    if (logEnable) log.debug "msr: $msr"
     updateDataValue("MSR", msr)
 }
 
 def zwaveEvent(hubitat.zwave.Command cmd) {
     // This will capture any commands not handled by other instances of zwaveEvent
     // and is recommended for development so you can see every command the device sends
-    log.debug "Unhandled Event: ${cmd}"
+    if (logEnable) log.debug "Unhandled Event: ${cmd}"
 }
 
 def on() {
-    log.debug "on()"
+    if (logEnable) log.debug "on()"
     commands([
             zwave.switchAllV1.switchAllOn(),
             encap(zwave.switchBinaryV1.switchBinaryGet(), 1),
@@ -198,7 +200,7 @@ def on() {
 }
 
 def off() {
-    log.debug "off()"
+    if (logEnable) log.debug "off()"
     commands([
             zwave.switchAllV1.switchAllOff(),
             encap(zwave.switchBinaryV1.switchBinaryGet(), 1),
@@ -207,7 +209,7 @@ def off() {
 }
 
 def childOn(String dni) {
-    log.debug "childOn($dni)"
+    if (logEnable) log.debug "childOn($dni)"
     def cmds = []
     cmds << new hubitat.device.HubAction(command(encap(zwave.basicV1.basicSet(value: 0xFF), channelNumber(dni))), hubitat.device.Protocol.ZWAVE)
     cmds << new hubitat.device.HubAction(command(encap(zwave.switchBinaryV1.switchBinaryGet(), channelNumber(dni))), hubitat.device.Protocol.ZWAVE)
@@ -215,7 +217,7 @@ def childOn(String dni) {
 }
 
 def childOff(String dni) {
-    log.debug "childOff($dni)"
+    if (logEnable) log.debug "childOff($dni)"
     def cmds = []
     cmds << new hubitat.device.HubAction(command(encap(zwave.basicV1.basicSet(value: 0x00), channelNumber(dni))), hubitat.device.Protocol.ZWAVE)
     cmds << new hubitat.device.HubAction(command(encap(zwave.switchBinaryV1.switchBinaryGet(), channelNumber(dni))), hubitat.device.Protocol.ZWAVE)
@@ -223,14 +225,14 @@ def childOff(String dni) {
 }
 
 def childRefresh(String dni) {
-    log.debug "childRefresh($dni)"
+    if (logEnable) log.debug "childRefresh($dni)"
     def cmds = []
     cmds << new hubitat.device.HubAction(command(encap(zwave.switchBinaryV1.switchBinaryGet(), channelNumber(dni))), hubitat.device.Protocol.ZWAVE)
     cmds
 }
 
 def poll() {
-    log.debug "poll()"
+    if (logEnable) log.debug "poll()"
     commands([
             encap(zwave.switchBinaryV1.switchBinaryGet(), 1),
             encap(zwave.switchBinaryV1.switchBinaryGet(), 2),
@@ -238,7 +240,7 @@ def poll() {
 }
 
 def refresh() {
-    log.debug "refresh()"
+    if (logEnable) log.debug "refresh()"
     commands([
             encap(zwave.switchBinaryV1.switchBinaryGet(), 1),
             encap(zwave.switchBinaryV1.switchBinaryGet(), 2),
@@ -246,7 +248,7 @@ def refresh() {
 }
 
 def ping() {
-    log.debug "ping()"
+    if (logEnable) log.debug "ping()"
     refresh()
 }
 
@@ -255,7 +257,7 @@ def installed() {
 }
 
 def configure() {
-    log.debug "configure()"
+    if (logEnable) log.debug "configure()"
     def cmds = initialize()
     commands(cmds)
 }
@@ -286,23 +288,23 @@ def integer2Cmd(value, size) {
 	break
 	}
     } catch (e) {
-        log.debug "Error: integer2Cmd $e Value: $value"
+        if (logEnable) log.debug "Error: integer2Cmd $e Value: $value"
     }
 }
 
 def updated() {
     if (!state.lastRan || now() >= state.lastRan + 2000) {
-        log.debug "updated()"
+        if (logEnable) log.debug "updated()"
         state.lastRan = now()
         def cmds = initialize()
         commands(cmds)
     } else {
-        log.debug "updated() ran within the last 2 seconds. Skipping execution."
+        if (logEnable) log.debug "updated() ran within the last 2 seconds. Skipping execution."
     }
 }
 
 def initialize() {
-    log.debug "initialize()"
+    if (logEnable) log.debug "initialize()"
     if (!childDevices) {
         createChildDevices()
     } else if (device.label != state.oldLabel) {
@@ -327,7 +329,7 @@ def initialize() {
 }
 
 def zwaveEvent(hubitat.zwave.commands.configurationv2.ConfigurationReport cmd) {
-    log.debug "${device.displayName} parameter '${cmd.parameterNumber}' with a byte size of '${cmd.size}' is set to '${cmd.configurationValue}'"
+    if (logEnable) log.debug "${device.displayName} parameter '${cmd.parameterNumber}' with a byte size of '${cmd.size}' is set to '${cmd.configurationValue}'"
 }
 
 private encap(cmd, endpoint) {
@@ -456,18 +458,18 @@ void zwaveEvent(hubitat.zwave.commands.associationv2.AssociationReport cmd) {
        }
     } 
     state."actualAssociation${cmd.groupingIdentifier}" = temp
-    log.debug "Associations for Group ${cmd.groupingIdentifier}: ${temp}"
+    if (logEnable) log.debug "Associations for Group ${cmd.groupingIdentifier}: ${temp}"
     updateDataValue("associationGroup${cmd.groupingIdentifier}", "$temp")
 }
 
 def zwaveEvent(hubitat.zwave.commands.associationv2.AssociationGroupingsReport cmd) {
-    log.debug "Supported association groups: ${cmd.supportedGroupings}"
+    if (logEnable) log.debug "Supported association groups: ${cmd.supportedGroupings}"
     state.associationGroups = cmd.supportedGroupings
     createEvent(name: "groups", value: cmd.supportedGroupings)
 }
 
 void zwaveEvent(hubitat.zwave.commands.versionv1.VersionReport cmd) {
-    log.debug cmd
+    if (logEnable) log.debug cmd
     if(cmd.applicationVersion && cmd.applicationSubVersion) {
 	    def firmware = "${cmd.applicationVersion}.${cmd.applicationSubVersion.toString().padLeft(2,'0')}"
         state.needfwUpdate = "false"

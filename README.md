@@ -1,2 +1,2 @@
 # Hubitat
-Location for Inovelli Hubitat Drivers and Apps
+Driver for NZW97 Dual Outdoor Plug forked from https://github.com/InovelliUSA/Hubitat
